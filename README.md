@@ -6,7 +6,7 @@
 * Curator v5.5.4
 
 After deploy, stdout from all Kubernetes pods will end up in ElasticSearch
-index `logstast-%Y.%m.%d`.
+index `logstash-%Y.%m.%d`.
 
 > Don't forget to create Kibana "Index Mapping", this example didn't provide any 
 

@@ -1,0 +1,97 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-configmap
+  labels:
+    app: {{ .Release.Name }}
+    release: {{ .Release.Name }}
+data:
+  parsers.conf: |
+    # extract data from default docker-json contaier output stream
+    [PARSER]
+        Name              docker-custom
+        Format            json
+        Time_Key          time
+        Time_Format       %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep         On
+        Decode_Field_As   escaped    log
+        Decode_Field_As   escaped    stream
+
+    # from a given path, extract log filename
+    # /var/log/containers/some-log-name.log -> some-log-name.log
+    [PARSER]
+        Name    k8s-filename
+        Format  regex
+        Regex   ^(\/.*?)+\/(?<filename>.*\.log)$
+
+    # extract kubernetes metadata values from a file name
+    # for ip-lookup-5b98df9986-988hk_dev_ip-lookup-4f5a37ca13df4d51c7ffc31f7161572ed0a1b2c695ea77304ee9bec5c9f7c036.log
+    # parser will extract following key/value pairs:
+    # deployment: ip-lookup
+    # pod: ip-lookup
+    # namespace: dev
+    # container_id: 4f5a37ca13df4d51c7ffc31f7161572ed0a1b2c695ea77304ee9bec5c9f7c036
+    [PARSER]
+        Name    k8s-metadata
+        Format  regex
+        Regex   ^(?<deployment>\S+?)(-[a-z0-9]+){1,2}_(?<namespace>.*)_(?<pod>\S+)-(?<container_id>.+)\.log$
+
+
+  fluentbit.conf: |
+    [SERVICE]
+        Daemon       off
+        Log_Level    info
+        Flush        5
+        Parsers_File parsers.conf
+        HTTP_Server  On
+        HTTP_Port    {{ .Values.service.port }}
+
+    # tail all container logs.
+    [INPUT]
+        Name              tail
+        Tag               k8s-container-log.*
+        Path              {{ .Values.config.logs_path }}/*.log
+        DB                {{ .Values.config.mount_database_path }}/flb.db
+        Path_Key          src
+        Parser            docker-custom
+        Mem_Buf_Limit     5MB
+        Skip_Long_Lines   On
+        Refresh_Interval  5
+
+    # extract filename from src key, /var/log/containers/some.log -> some.log
+    # and put extracted filename under filename key.
+    [FILTER]
+        Name              parser
+        Match             k8s-container-log.*
+        Key_Name          src
+        Parser            k8s-filename
+        Reserve_Data      On
+
+    # extract kubernetes specific metadata from filename:
+    # deployment, pod, namespace, etc.
+    [FILTER]
+        Name              parser
+        Match             k8s-container-log.*
+        Key_Name          filename
+        Parser            k8s-metadata
+        Reserve_Data      On
+
+    # drop some helper fields.
+    [FILTER]
+        Name              record_modifier
+        Match             k8s-container-log.*
+        Remove_key        stream
+        Remove_key        filename
+        Remove_key        container_id
+
+    # output everything to elasticsearch
+    # as for now, there are no way to specify
+    # index as string concatenation of namespace-deployment field :(
+    [OUTPUT]
+        Name              es
+        Match             *
+        Host              {{ .Values.config.elasticsearch.host }}
+        Port              {{ .Values.config.elasticsearch.port }}
+        Logstash_Format   On
+        Retry_Limit       False

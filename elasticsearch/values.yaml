@@ -1,0 +1,19 @@
+# WARNING: do not change this value
+replicaCount: 1
+
+initImage:
+  repository: busybox
+  tag: latest
+  pullPolicy: IfNotPresent
+
+image:
+  repository: docker.elastic.co/elasticsearch/elasticsearch
+  tag: 6.4.3
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 9200
+
+storage:
+  capacity: "1Gi"

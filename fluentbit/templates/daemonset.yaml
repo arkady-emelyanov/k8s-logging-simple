@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "fluentbit.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "fluentbit.name" . }}
+    helm.sh/chart: {{ include "fluentbit.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "fluentbit.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "fluentbit.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - "/fluent-bit/bin/fluent-bit"
+        - "--config=/etc/config/fluentbit.conf"
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        volumeMounts:
+        - name: database
+          mountPath: {{ .Values.config.mount_database_path }}
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
+        - name: k8s-logs
+          mountPath: {{ .Values.config.mount_kubernetes_logs }}
+          readOnly: true
+        - name: docker-logs
+          mountPath: {{ .Values.config.mount_docker_logs}}
+          readOnly: true
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            port: http
+            path: /
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            port: http
+            path: /
+          initialDelaySeconds: 5
+          periodSeconds: 20
+
+      volumes:
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
+      - name: database
+        hostPath:
+          path: {{ .Values.config.mount_database_path }}
+      - name: config
+        configMap:
+          name: {{ .Release.Name }}-configmap
+      - name: k8s-logs
+        hostPath:
+          path: {{ .Values.config.mount_kubernetes_logs }}
+      - name: docker-logs
+        hostPath:
+          path: {{ .Values.config.mount_docker_logs}}

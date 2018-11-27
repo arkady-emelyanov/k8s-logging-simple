@@ -1,0 +1,17 @@
+image:
+  repository: fluent/fluent-bit
+  tag: 0.13
+  pullPolicy: IfNotPresent
+
+service:
+  port: 2020
+
+config:
+  mount_kubernetes_logs: /var/log
+  mount_docker_logs: /var/lib/docker/containers
+  mount_database_path: /var/run/fluentbitdb
+
+  logs_path: /var/log/containers
+  elasticsearch:
+    host: 127.0.0.1
+    port: 9200

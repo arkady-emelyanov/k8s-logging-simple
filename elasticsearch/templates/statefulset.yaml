@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "elasticsearch.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "elasticsearch.name" . }}
+    helm.sh/chart: {{ include "elasticsearch.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  serviceName: "node"
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "elasticsearch.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "elasticsearch.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      volumes:
+      - name: localtime
+        hostPath:
+          path: /etc/localtime
+      initContainers:
+      - name: "sysctl"
+        image: "{{ .Values.initImage.repository }}:{{ .Values.initImage.tag }}"
+        imagePullPolicy: {{ .Values.initImage.pullPolicy }}
+        command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        securityContext:
+          privileged: true
+      - name: "chown"
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+        - /bin/bash
+        - -c
+        - chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data &&
+          chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/logs
+        securityContext:
+          runAsUser: 0
+        volumeMounts:
+        - name: {{ .Release.Name }}-data
+          mountPath: /usr/share/elasticsearch/data
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: "discovery.type"
+          value: "single-node"
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.port }}
+          protocol: TCP
+        volumeMounts:
+        - name: localtime
+          mountPath: /etc/localtime
+          readOnly: true
+        - name: {{ .Release.Name }}-data
+          mountPath: /usr/share/elasticsearch/data
+        readinessProbe:
+          httpGet:
+            port: http
+            path: /_cluster/health?local=true
+          initialDelaySeconds: 15
+        livenessProbe:
+          httpGet:
+            port: http
+            path: /_cluster/health?local=true
+          periodSeconds: 30
+          initialDelaySeconds: 15
+
+  volumeClaimTemplates:
+  - metadata:
+      name: {{ .Release.Name }}-data
+      annotations:
+        volume.beta.kubernetes.io/storage-class: "gp2"
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: {{ .Values.storage.capacity }}

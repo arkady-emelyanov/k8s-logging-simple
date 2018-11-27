@@ -1,0 +1,35 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: {{ include "curator.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "curator.name" . }}
+    helm.sh/chart: {{ include "curator.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  schedule: "0 1 * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: curator
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            args:
+            - "--config"
+            - "/etc/config/config.yml"
+            - "/etc/config/clean.yml"
+            volumeMounts:
+            - name: config
+              mountPath: /etc/config
+          volumes:
+          - name: config
+            configMap:
+              name: {{ .Release.Name }}-configmap
+          restartPolicy: Never

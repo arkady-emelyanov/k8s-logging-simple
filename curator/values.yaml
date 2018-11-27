@@ -1,0 +1,10 @@
+image:
+  repository: bobrik/curator
+  tag: 5.5.4
+  pullPolicy: IfNotPresent
+
+config:
+  elasticsearch:
+    host: 127.0.0.1
+    port: 9200
+    keep_days: 7
